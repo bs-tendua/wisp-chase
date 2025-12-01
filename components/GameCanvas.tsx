@@ -8,22 +8,36 @@ interface GameCanvasProps {
 }
 
 // Physics & Game Constants
-const GRAVITY_FORCE = 0.7;
-const INITIAL_SPEED = 7;
-const MAX_SPEED = 20;
-const SPEED_INCREMENT = 0.002;
+const GRAVITY_FORCE = 0.8; // Slightly stronger gravity for snappier feel
+const INITIAL_SPEED = 8;
+const MAX_SPEED = 24;
+const SPEED_INCREMENT = 0.003;
+const SYNC_DISTANCE_THRESHOLD = 80; // Distance in pixels to be considered "Synced" with Wisp
 
 // Theme Colors
 const COLORS = {
   bg: '#000000',
   player: '#00fff2', // Cyan
   playerGlow: '#00fff2',
-  drone: '#ff00ff', // Magenta for the guide
+  drone: '#800080', // Dim Magenta (Darker)
+  droneLight: '#d02090', // Slight highlight
   spike: '#ff003c', // Red/Pink
   block: '#bf00ff', // Purple
   grid: '#1a1a2e',
   text: '#ffffff'
 };
+
+const WISP_PHRASES = [
+    "FASTER...",
+    "DON'T BLINK",
+    "VOID AHEAD",
+    "STAY CLOSE",
+    "SYNC WITH ME",
+    "CORRUPTION RISING",
+    "KEEP UP",
+    "FOCUS...",
+    "SYSTEM UNSTABLE"
+];
 
 const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -46,11 +60,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
     trail: []
   });
 
-  // The "Angelfish" drone that leads the player
+  // The "Wisp" drone that leads the player
   const droneRef = useRef({
     y: 0,
     offsetY: 0, // For floating animation
-    frame: 0
+    frame: 0,
+    message: null as string | null,
+    messageTimer: 0,
+    isSynced: false
   });
 
   const obstaclesRef = useRef<Obstacle[]>([]);
@@ -58,19 +75,32 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
   const gameSpeedRef = useRef(INITIAL_SPEED);
   const scoreRef = useRef(0);
   const distanceScoreRef = useRef(0);
+  const levelRef = useRef(0);
   const framesRef = useRef(0);
   const canvasSizeRef = useRef({ width: 0, height: 0 });
+
+  // Prevent Context Menu (Right Click)
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
 
   const spawnObstacle = () => {
     const { width, height } = canvasSizeRef.current;
     if (width === 0) return;
 
     const isTop = Math.random() > 0.5;
-    const type = Math.random() > 0.65 ? 'block' : 'spike';
+    const type = Math.random() > 0.6 ? 'block' : 'spike';
     
-    // Randomize dimensions slightly for "glitch" feel
-    const obstacleHeight = type === 'block' ? 60 + Math.random() * 40 : 50;
-    const obstacleWidth = type === 'block' ? 40 : 40;
+    // Scale size based on screen height for "Massive" feel on large screens
+    // Blocks take up 30% to 50% of screen height
+    // Spikes take up 25% to 40%
+    const minHeight = height * 0.25;
+    const variablity = height * 0.20;
+    
+    let obstacleHeight = minHeight + Math.random() * variablity;
+    
+    // Make them wider too
+    const obstacleWidth = type === 'block' ? 60 + Math.random() * 40 : 50 + Math.random() * 30;
     
     const obstacle: Obstacle = {
       x: width + 50,
@@ -82,9 +112,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
       passed: false
     };
 
-    // If it's a top spike, it hangs from y=0.
-    // If it's a top block, it also hangs from y=0.
-    // Logic already handles y=0 for isTop, but we ensure height is correct.
     if (isTop) {
         obstacle.y = 0;
     }
@@ -119,12 +146,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
       color: COLORS.player,
       trail: []
     };
-    droneRef.current = { y: height/2, offsetY: 0, frame: 0 };
+    droneRef.current = { y: height/2, offsetY: 0, frame: 0, message: null, messageTimer: 0, isSynced: false };
     obstaclesRef.current = [];
     particlesRef.current = [];
     gameSpeedRef.current = INITIAL_SPEED;
     scoreRef.current = 0;
     distanceScoreRef.current = 0;
+    levelRef.current = 0;
     framesRef.current = 0;
     setFinalScore(0);
     setGameState(GameState.PLAYING);
@@ -157,7 +185,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-        if(gameState === GameState.PLAYING) {
+        if(gameState === GameState.PLAYING || gameState === GameState.MENU) {
+            if (e.button === 2) return; // Ignore right click logic here, handled by onContextMenu
             e.preventDefault();
             handleInput();
         }
@@ -234,9 +263,34 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
 
     // Distance Scoring
     distanceScoreRef.current += gameSpeedRef.current * 0.05;
+    
+    // Proximity / Sync Check
+    const distToWisp = Math.abs((p.y + p.height/2) - (droneRef.current.y));
+    const isSynced = distToWisp < SYNC_DISTANCE_THRESHOLD;
+    droneRef.current.isSynced = isSynced;
+
+    // Sync Bonus Multiplier
+    const scoreMultiplier = isSynced ? 3.0 : 1.0; 
+
     if (distanceScoreRef.current >= 1) {
-        scoreRef.current += Math.floor(distanceScoreRef.current);
+        scoreRef.current += Math.floor(distanceScoreRef.current) * scoreMultiplier;
         distanceScoreRef.current -= Math.floor(distanceScoreRef.current);
+    }
+
+    // Leveling Up & Dialogue
+    const currentLevel = Math.floor(scoreRef.current / 500);
+    if (currentLevel > levelRef.current) {
+        levelRef.current = currentLevel;
+        // Trigger Wisp Message
+        droneRef.current.message = WISP_PHRASES[Math.floor(Math.random() * WISP_PHRASES.length)];
+        droneRef.current.messageTimer = 180; // 3 seconds
+    }
+
+    if (droneRef.current.messageTimer > 0) {
+        droneRef.current.messageTimer--;
+        if (droneRef.current.messageTimer <= 0) {
+            droneRef.current.message = null;
+        }
     }
 
     // Physics
@@ -257,13 +311,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
     }
 
     // Update Drone (Angelfish) Logic
-    // It chases the player's Y position but with a lag (lerp)
-    // It also floats slightly up and down
     droneRef.current.frame += 0.05;
-    droneRef.current.offsetY = Math.sin(droneRef.current.frame) * 5;
+    droneRef.current.offsetY = Math.sin(droneRef.current.frame) * 10;
     
     const targetY = p.y + (p.height / 2); // Center of player
-    // Smooth lerp: moves 10% of the distance per frame
+    // Smooth lerp: moves 8% of the distance per frame
     droneRef.current.y += (targetY - droneRef.current.y) * 0.08;
 
     // Trails
@@ -276,10 +328,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
         if (p.trail[i].alpha <= 0) p.trail.splice(i, 1);
     }
 
-    // Spawn Logic
+    // Spawn Logic - Harder as game progresses
     framesRef.current++;
-    const spawnRate = Math.floor(1100 / (gameSpeedRef.current * 1.5)); 
-    if (framesRef.current % (Math.max(25, spawnRate)) === 0 && Math.random() > 0.2) {
+    // Spawn rate gets tighter as speed increases
+    const spawnRate = Math.floor(1000 / (gameSpeedRef.current * 1.3)); 
+    if (framesRef.current % (Math.max(20, spawnRate)) === 0 && Math.random() > 0.2) {
       spawnObstacle();
     }
 
@@ -291,15 +344,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
       // Obstacle Passing Bonus
       if (!obs.passed && obs.x + obs.width < p.x) {
         obs.passed = true;
-        scoreRef.current += 100;
+        scoreRef.current += 200; // Increased bonus
       }
 
-      if (obs.x + obs.width < -50) {
+      if (obs.x + obs.width < -100) {
         obstaclesToRemove.push(index);
       }
 
       // Collision
-      const pad = 8; // Slightly more forgiving
+      const pad = 8; 
       const playerHitbox = {
           x: p.x + pad,
           y: p.y + pad,
@@ -364,6 +417,33 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
       ctx.globalAlpha = 1.0;
   };
 
+  const drawSpeechBubble = (ctx: CanvasRenderingContext2D, x: number, y: number, text: string) => {
+      ctx.font = "20px 'VT323', monospace";
+      const textMetrics = ctx.measureText(text);
+      const w = textMetrics.width + 20;
+      const h = 30;
+      const bubbleX = x - w/2;
+      const bubbleY = y - 40;
+
+      // Bubble BG
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(bubbleX, bubbleY, w, h);
+      ctx.strokeStyle = COLORS.player;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bubbleX, bubbleY, w, h);
+
+      // Text
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x, bubbleY + 20);
+
+      // Line to source
+      ctx.beginPath();
+      ctx.moveTo(x, bubbleY + h);
+      ctx.lineTo(x, y - 10);
+      ctx.stroke();
+  };
+
   const drawGlitchRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) => {
       const shake = Math.random() > 0.9 ? 2 : 0;
       
@@ -381,7 +461,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
       // Base glow
       ctx.shadowBlur = 10;
       ctx.shadowColor = color;
-      ctx.fillStyle = 'rgba(20, 0, 30, 0.9)';
+      ctx.fillStyle = 'rgba(20, 0, 30, 0.95)'; // Opaque to feel solid
       ctx.fillRect(x, y, w, h);
       
       // Outline
@@ -390,13 +470,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
       ctx.strokeRect(x, y, w, h);
       ctx.shadowBlur = 0;
 
-      // Internal Matrix Glitch Pattern
+      // Internal Matrix Glitch Pattern - Denser for "Massive" feel
       ctx.fillStyle = color;
-      const bitSize = 4;
+      const bitSize = 8;
       for(let i = 0; i < w; i += bitSize + 2) {
           for(let j = 0; j < h; j += bitSize + 2) {
-              if (Math.random() > 0.7) {
-                  ctx.globalAlpha = 0.6;
+              if (Math.random() > 0.8) {
+                  ctx.globalAlpha = 0.4;
                   ctx.fillRect(x + i, y + j, bitSize, bitSize);
               }
           }
@@ -407,7 +487,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
       if (Math.random() > 0.8) {
           ctx.fillStyle = '#ffffff';
           const ly = y + Math.random() * h;
-          ctx.fillRect(x - 5, ly, w + 10, 2);
+          ctx.fillRect(x - 5, ly, w + 10, 4);
       }
   };
 
@@ -447,28 +527,35 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
     if (gameState !== GameState.MENU) {
         ctx.font = "48px 'VT323', monospace";
         ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
         ctx.fillText(Math.floor(scoreRef.current).toString(), width / 2, height / 2);
         
         ctx.font = "24px 'VT323', monospace";
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "left";
         ctx.fillText(`SCORE: ${Math.floor(scoreRef.current)}`, 20, 40);
+
+        // Sync Indicator
+        if (droneRef.current.isSynced) {
+            ctx.fillStyle = "#00fff2";
+            ctx.fillText("SYNCED >> x3 PTS", 20, 70);
+        }
+
         ctx.textAlign = "right";
         ctx.fillStyle = "#ff00ff";
         ctx.fillText(`HI: ${highScore}`, width - 20, 40);
     }
 
-    // -- Drone (Angelfish) --
+    // -- Drone (Wisp) --
     // Drawn before player so player can overlap it slightly
-    const droneX = p.x + 180; // Leads the player
+    const droneX = p.x + 200; // Leads the player further
     const droneY = droneRef.current.y + droneRef.current.offsetY;
 
-    // Tether Line
+    // Tether Line (Changes if synced)
     if (gameState === GameState.PLAYING) {
-        ctx.strokeStyle = COLORS.drone;
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = droneRef.current.isSynced ? '#00fff2' : COLORS.drone;
+        ctx.lineWidth = droneRef.current.isSynced ? 3 : 1;
+        ctx.globalAlpha = droneRef.current.isSynced ? 0.8 : 0.2;
         ctx.beginPath();
         ctx.moveTo(p.x + p.width/2, p.y + p.height/2);
         ctx.lineTo(droneX, droneY);
@@ -476,20 +563,36 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
         ctx.globalAlpha = 1.0;
     }
 
-    // Drone Body
-    ctx.shadowBlur = 15;
+    // Drone Body (Dimmer now)
+    ctx.shadowBlur = 10;
     ctx.shadowColor = COLORS.drone;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = COLORS.drone; // Use the dim magenta
+    ctx.globalAlpha = 0.7; // Make it translucent
     ctx.beginPath();
-    ctx.arc(droneX, droneY, 6, 0, Math.PI * 2);
+    ctx.arc(droneX, droneY, 8, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1.0;
+    
+    // Inner core
+    ctx.fillStyle = COLORS.droneLight;
+    ctx.beginPath();
+    ctx.arc(droneX, droneY, 3, 0, Math.PI * 2);
+    ctx.fill();
+
     // Drone Rings
     ctx.strokeStyle = COLORS.drone;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
     ctx.beginPath();
-    ctx.arc(droneX, droneY, 10 + Math.sin(framesRef.current * 0.2) * 2, 0, Math.PI * 2);
+    ctx.arc(droneX, droneY, 12 + Math.sin(framesRef.current * 0.1) * 3, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.globalAlpha = 1.0;
     ctx.shadowBlur = 0;
+
+    // Drone Chat
+    if (droneRef.current.message) {
+        drawSpeechBubble(ctx, droneX, droneY - 20, droneRef.current.message);
+    }
 
     // -- Player --
     // Draw Trail
@@ -536,7 +639,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
   };
 
   return (
-    <div className="relative w-full h-full font-[VT323]">
+    <div 
+        className="relative w-full h-full font-[VT323] overflow-hidden" 
+        onContextMenu={handleContextMenu}
+    >
       <canvas ref={canvasRef} className="block w-full h-full cursor-pointer" />
       
       {/* UI Overlay */}
@@ -545,11 +651,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
         {/* Start Screen */}
         {gameState === GameState.MENU && (
           <div className="bg-black/90 p-12 border-2 border-cyan-400 flex flex-col items-center text-center shadow-[0_0_50px_rgba(6,182,212,0.4)] pointer-events-auto transform rotate-1">
-            <h1 className="text-7xl mb-4 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-white to-fuchsia-500 animate-pulse tracking-widest" style={{ textShadow: '4px 4px 0px #ff00ff' }}>
-              NEON GLITCH
+            <h1 className="text-7xl mb-4 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-white to-fuchsia-500 animate-pulse tracking-widest" style={{ textShadow: '4px 4px 0px #800080' }}>
+              WISP CHASER
             </h1>
             <p className="text-cyan-200 text-xl mb-8 tracking-widest uppercase">
-              System Corruption Imminent
+              FOLLOW THE SIGNAL. STAY ALIVE.
             </p>
             
             <button 
