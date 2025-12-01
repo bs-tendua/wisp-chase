@@ -91,16 +91,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
     const isTop = Math.random() > 0.5;
     const type = Math.random() > 0.6 ? 'block' : 'spike';
     
-    // Scale size based on screen height for "Massive" feel on large screens
-    // Blocks take up 30% to 50% of screen height
-    // Spikes take up 25% to 40%
-    const minHeight = height * 0.25;
-    const variablity = height * 0.20;
+    // Scale size proportionate to screen height
+    // Previous was 0.25 to 0.45, reducing to 0.15 to 0.30 (15% - 30% of screen height)
+    const minHeight = height * 0.15;
+    const variablity = height * 0.15;
     
     let obstacleHeight = minHeight + Math.random() * variablity;
     
-    // Make them wider too
-    const obstacleWidth = type === 'block' ? 60 + Math.random() * 40 : 50 + Math.random() * 30;
+    // Width is also proportionate to height to maintain aspect ratio on different screens
+    // Blocks are roughly square-ish or slightly rectangular
+    const baseWidth = height * 0.12; 
+    const obstacleWidth = type === 'block' 
+        ? baseWidth + Math.random() * (baseWidth * 0.5) 
+        : baseWidth * 0.8 + Math.random() * (baseWidth * 0.4);
     
     const obstacle: Obstacle = {
       x: width + 50,
