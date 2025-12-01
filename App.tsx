@@ -15,7 +15,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-screen bg-black text-white overflow-hidden relative select-none">
+    <div className="fixed inset-0 w-full h-full bg-black text-white overflow-hidden select-none touch-none">
       <div className="scanlines"></div>
       <div className="crt-overlay"></div>
       <div className="screen-flicker w-full h-full">

@@ -1068,18 +1068,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
         className="relative w-full h-full font-[VT323] overflow-hidden" 
         onContextMenu={handleContextMenu}
     >
-      <canvas ref={canvasRef} className="block w-full h-full cursor-pointer" />
+      <canvas ref={canvasRef} className="block w-full h-full cursor-pointer touch-none" />
       
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col items-center justify-center">
         
         {/* Start Screen */}
         {gameState === GameState.MENU && (
-          <div className="bg-black/95 p-12 border-2 border-cyan-400 flex flex-col items-center text-center shadow-[0_0_50px_rgba(6,182,212,0.4)] pointer-events-auto">
-            <h1 className="text-8xl mb-2 text-white italic tracking-tighter" style={{ textShadow: '4px 4px 0px #00e0ff' }}>
+          <div className="bg-black/95 p-6 md:p-12 border-2 border-cyan-400 flex flex-col items-center text-center shadow-[0_0_50px_rgba(6,182,212,0.4)] pointer-events-auto max-w-[90%] md:max-w-none">
+            <h1 className="text-5xl md:text-8xl mb-2 text-white italic tracking-tighter" style={{ textShadow: '4px 4px 0px #00e0ff' }}>
               WISP CHASER
             </h1>
-            <p className="text-cyan-200 text-xl mb-8 tracking-widest uppercase flex items-center gap-2">
+            <p className="text-cyan-200 text-lg md:text-xl mb-6 md:mb-8 tracking-widest uppercase flex items-center gap-2">
               <Zap size={16} /> SYSTEM READY <Zap size={16} />
             </p>
             
@@ -1087,20 +1087,20 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
                 onClick={() => {
                   handleInput();
                 }}
-                className="group relative px-12 py-4 bg-cyan-600 hover:bg-cyan-500 transition-all duration-200 border-2 border-white text-3xl text-white hover:scale-105 active:scale-95 flex items-center gap-3 shadow-[4px_4px_0px_#fff]"
+                className="group relative px-8 py-3 md:px-12 md:py-4 bg-cyan-600 hover:bg-cyan-500 transition-all duration-200 border-2 border-white text-xl md:text-3xl text-white hover:scale-105 active:scale-95 flex items-center gap-3 shadow-[4px_4px_0px_#fff]"
             >
-                <Play className="w-8 h-8" />
+                <Play className="w-6 h-6 md:w-8 md:h-8" />
                 START RUN
             </button>
             
-            <div className="mt-12 flex items-center gap-8 text-lg text-slate-400">
+            <div className="mt-8 md:mt-12 flex items-center gap-8 text-lg text-slate-400">
                 <div className="flex flex-col items-center gap-1">
-                    <span className="text-white text-2xl">[SPACE]</span>
+                    <span className="text-white text-xl md:text-2xl">[SPACE / TAP]</span>
                     <span className="text-sm">GRAVITY FLIP</span>
                 </div>
             </div>
             
-            <div className="mt-8 flex gap-4 text-xs text-slate-500 uppercase tracking-widest">
+            <div className="mt-6 md:mt-8 flex gap-4 text-[10px] md:text-xs text-slate-500 uppercase tracking-widest flex-wrap justify-center">
                 <div className="flex items-center gap-1"><Magnet size={12}/> MAGNET</div>
                 <div className="flex items-center gap-1"><ChevronsUp size={12}/> BOOST</div>
                 <div className="flex items-center gap-1"><Coins size={12}/> COINS</div>
@@ -1110,23 +1110,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
 
         {/* Game Over Screen */}
         {gameState === GameState.GAME_OVER && (
-          <div className="bg-black/95 p-12 border-2 border-red-500 flex flex-col items-center text-center shadow-[0_0_80px_rgba(255,0,0,0.5)] pointer-events-auto z-20">
-            <h2 className="text-6xl mb-2 text-red-500 tracking-widest" style={{ textShadow: '2px 2px 0px white' }}>CRITICAL FAILURE</h2>
+          <div className="bg-black/95 p-6 md:p-12 border-2 border-red-500 flex flex-col items-center text-center shadow-[0_0_80px_rgba(255,0,0,0.5)] pointer-events-auto z-20 max-w-[90%]">
+            <h2 className="text-4xl md:text-6xl mb-2 text-red-500 tracking-widest" style={{ textShadow: '2px 2px 0px white' }}>CRITICAL FAILURE</h2>
             
-            <div className="grid grid-cols-2 gap-8 my-6 w-full max-w-md">
+            <div className="grid grid-cols-2 gap-4 md:gap-8 my-4 md:my-6 w-full max-w-md">
                 <div className="text-right border-r border-slate-700 pr-4">
-                    <div className="text-slate-400 text-sm">SCORE</div>
-                    <div className="text-5xl text-white">{finalScore}</div>
+                    <div className="text-slate-400 text-xs md:text-sm">SCORE</div>
+                    <div className="text-3xl md:text-5xl text-white">{finalScore}</div>
                 </div>
                 <div className="text-left pl-4">
-                    <div className="text-slate-400 text-sm">COINS</div>
-                    <div className="text-5xl text-yellow-400">{collectedCoins}</div>
+                    <div className="text-slate-400 text-xs md:text-sm">COINS</div>
+                    <div className="text-3xl md:text-5xl text-yellow-400">{collectedCoins}</div>
                 </div>
             </div>
             
             {finalScore >= highScore && finalScore > 0 && (
-                <div className="mb-8 flex items-center gap-2 text-cyan-400 text-2xl animate-pulse">
-                    <Trophy size={32} />
+                <div className="mb-6 md:mb-8 flex items-center gap-2 text-cyan-400 text-lg md:text-2xl animate-pulse">
+                    <Trophy size={24} />
                     NEW HIGHSCORE
                 </div>
             )}
@@ -1135,14 +1135,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ highScore, onUpdateHighScore })
                 onClick={() => {
                    resetGame();
                 }}
-                className="px-8 py-3 bg-white text-black hover:bg-slate-200 border-2 border-transparent hover:border-red-500 transition-all text-2xl flex items-center gap-2 mb-4"
+                className="px-6 py-2 md:px-8 md:py-3 bg-white text-black hover:bg-slate-200 border-2 border-transparent hover:border-red-500 transition-all text-lg md:text-2xl flex items-center gap-2 mb-4"
             >
-                <RotateCcw size={24} />
+                <RotateCcw size={20} />
                 RETRY
             </button>
             <button 
                 onClick={() => setGameState(GameState.MENU)}
-                className="text-slate-500 hover:text-white transition-colors text-lg uppercase tracking-wider"
+                className="text-slate-500 hover:text-white transition-colors text-sm md:text-lg uppercase tracking-wider"
             >
                 Return to Menu
             </button>
