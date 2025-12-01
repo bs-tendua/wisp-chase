@@ -35,3 +35,30 @@ export interface Particle {
   color: string;
   size: number;
 }
+
+export enum PickupType {
+  COIN = 'COIN',
+  MULTIPLIER = 'MULTIPLIER',
+  MAGNET = 'MAGNET',
+  BOOST = 'BOOST'
+}
+
+export interface Pickup {
+  id: string; // Unique ID for keying
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: PickupType;
+  collected: boolean;
+}
+
+export interface FloatingText {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  life: number; // Frames remaining
+  vy: number;
+}
