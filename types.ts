@@ -1,7 +1,10 @@
 export enum GameState {
   MENU = 'MENU',
   PLAYING = 'PLAYING',
+  PAUSED = 'PAUSED',
   GAME_OVER = 'GAME_OVER',
+  STORE = 'STORE',
+  SETTINGS = 'SETTINGS'
 }
 
 export interface Player {
@@ -61,4 +64,26 @@ export interface FloatingText {
   color: string;
   life: number; // Frames remaining
   vy: number;
+}
+
+// -- Economy & Settings --
+
+export interface Inventory {
+  coins: number;
+  unlockedItems: string[]; // IDs of unlocked items
+  equippedSkin: string; // ID
+  equippedWisp: string; // ID
+}
+
+export interface StoreItem {
+  id: string;
+  name: string;
+  type: 'skin' | 'wisp';
+  price: number;
+  value: string; // Hex color for skins, or style identifier for wisps
+}
+
+export interface GameSettings {
+  musicVolume: number; // 0.0 to 1.0
+  sfxVolume: number; // 0.0 to 1.0
 }
