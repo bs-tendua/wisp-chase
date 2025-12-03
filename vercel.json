@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/v2/(.*)",
+      "destination": "https://wisp-chase-git-v2-tenduas-projects.vercel.app/$1"
+    }
+  ]
+}
