@@ -26,11 +26,11 @@ const STORE_ITEMS: StoreItem[] = [
     { id: 'wisp_star', name: 'Nova Star', type: 'wisp', price: 300, value: 'star' },
 ];
 
-const GRAVITY_FORCE = 0.6; 
-const INITIAL_SPEED = 5;
-const MAX_SPEED = 20;
-const BOOST_SPEED = 35;
-const SPEED_INCREMENT = 0.0005;
+const GRAVITY_FORCE = 0.8; 
+const INITIAL_SPEED = 8;
+const MAX_SPEED = 24;
+const BOOST_SPEED = 45;
+const SPEED_INCREMENT = 0.003;
 const SYNC_DISTANCE_THRESHOLD = 60; 
 
 interface Biome {
