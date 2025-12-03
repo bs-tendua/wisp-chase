@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/v2",
-      "destination": "https://wisp-chase-git-v2-tenduas-projects.vercel.app/"
+      "destination": "https://wisp-chase-git-v2-bs-tenduas-projects.vercel.app/"
     },
     {
       "source": "/v2/:path*",
-      "destination": "https://wisp-chase-git-v2-tenduas-projects.vercel.app/:path*"
+      "destination": "https://wisp-chase-git-v2-bs-tenduas-projects.vercel.app/:path*"
     }
   ]
 }
