@@ -26,11 +26,11 @@ const STORE_ITEMS: StoreItem[] = [
     { id: 'wisp_star', name: 'Nova Star', type: 'wisp', price: 300, value: 'star' },
 ];
 
-const GRAVITY_FORCE = 0.8; 
-const INITIAL_SPEED = 8;
-const MAX_SPEED = 24;
-const BOOST_SPEED = 45;
-const SPEED_INCREMENT = 0.003;
+const GRAVITY_FORCE = 0.6; 
+const INITIAL_SPEED = 5;
+const MAX_SPEED = 20;
+const BOOST_SPEED = 35;
+const SPEED_INCREMENT = 0.0005;
 const SYNC_DISTANCE_THRESHOLD = 60; 
 
 interface Biome {
@@ -65,15 +65,24 @@ const lerpColor = (a: string, b: string, amount: number) => {
 
 // -- AUDIO ENGINE --
 
+const NOTES: Record<string, number> = {
+  'C1': 32.70, 'C#1': 34.65, 'D1': 36.71, 'E1': 41.20, 'F1': 43.65, 'F#1': 46.25, 'G1': 49.00, 'A1': 55.00, 'B1': 61.74,
+  'F2': 87.31, 'F#2': 92.50, 'G2': 98.00, 'A2': 110.00, 'B2': 123.47, 'D2': 73.42, 'E2': 82.41,
+  'C3': 130.81, 'C#3': 138.59, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'F#3': 185.00, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94, 'C#2': 69.30,
+  'C4': 261.63, 'C#4': 277.18, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'F#4': 369.99, 'G4': 392.00, 'G#4': 415.30, 'A4': 440.00, 'B4': 493.88,
+  'C5': 523.25, 'C#5': 554.37, 'D5': 587.33, 'E5': 659.25, 'F5': 698.46, 'F#5': 739.99, 'G5': 783.99, 'G#5': 830.61, 'A5': 880.00, 'B5': 987.77, 'C6': 1046.50, 'C#6': 1108.73
+};
+
 class AudioEngine {
   ctx: AudioContext | null = null;
   masterGain: GainNode | null = null;
   musicGain: GainNode | null = null;
+  bassGain: GainNode | null = null;
   sfxGain: GainNode | null = null;
+  noiseBuffer: AudioBuffer | null = null;
   
-  // Sequencer state
   nextNoteTime: number = 0;
-  noteIndex: number = 0;
+  step: number = 0;
   isPlaying: boolean = false;
   currentTrack: 'menu' | 'game' | 'none' = 'none';
   timerID: number | null = null;
@@ -84,82 +93,200 @@ class AudioEngine {
       this.ctx = new AudioContextClass();
       this.masterGain = this.ctx!.createGain();
       this.musicGain = this.ctx!.createGain();
+      this.bassGain = this.ctx!.createGain();
       this.sfxGain = this.ctx!.createGain();
       
       this.masterGain.connect(this.ctx!.destination);
       this.musicGain.connect(this.masterGain);
+      this.bassGain.connect(this.masterGain);
       this.sfxGain.connect(this.masterGain);
       
-      // Default volumes
-      this.musicGain.gain.value = 0.3;
-      this.sfxGain.gain.value = 0.3;
+      this.musicGain.gain.value = 0.2; // Lead synth lower
+      this.bassGain.gain.value = 0.5; // Bass louder
+      this.sfxGain.gain.value = 0.4;
+
+      // Create White Noise Buffer for Drums
+      const bufferSize = this.ctx.sampleRate * 2;
+      this.noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = this.noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+      }
     }
   }
 
-  resume = () => {
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
-  }
-
-  suspend = () => {
-    if (this.ctx && this.ctx.state === 'running') {
-        this.ctx.suspend();
-    }
-  }
+  resume = () => { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+  suspend = () => { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend(); }
 
   setVolumes = (musicVol: number, sfxVol: number) => {
-    if (this.musicGain) this.musicGain.gain.setTargetAtTime(musicVol * 0.4, this.ctx?.currentTime || 0, 0.1);
-    if (this.sfxGain) this.sfxGain.gain.setTargetAtTime(sfxVol * 0.6, this.ctx?.currentTime || 0, 0.1);
+    if (this.musicGain) this.musicGain.gain.setTargetAtTime(musicVol * 0.3, this.ctx?.currentTime || 0, 0.1);
+    if (this.bassGain) this.bassGain.gain.setTargetAtTime(musicVol * 0.6, this.ctx?.currentTime || 0, 0.1);
+    if (this.sfxGain) this.sfxGain.gain.setTargetAtTime(sfxVol * 0.5, this.ctx?.currentTime || 0, 0.1);
   }
 
-  // Simple note scheduler
-  scheduleNote = (freq: number, time: number, duration: number, vol: number = 0.1) => {
+  playDrum(type: 'kick' | 'snare' | 'hat', time: number) {
+      if (!this.ctx || !this.bassGain || !this.sfxGain || !this.noiseBuffer) return;
+
+      if (type === 'kick') {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain);
+          gain.connect(this.bassGain);
+          
+          osc.frequency.setValueAtTime(120, time);
+          osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.3);
+          gain.gain.setValueAtTime(0.8, time);
+          gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+          osc.start(time);
+          osc.stop(time + 0.3);
+      } else if (type === 'snare') {
+          const src = this.ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+          const gain = this.ctx.createGain();
+          const filter = this.ctx.createBiquadFilter();
+          
+          filter.type = 'bandpass';
+          filter.frequency.value = 1500;
+          
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.sfxGain);
+          
+          gain.gain.setValueAtTime(0.3, time);
+          gain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+          src.start(time);
+          src.stop(time + 0.2);
+      } else if (type === 'hat') {
+          const src = this.ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+          const gain = this.ctx.createGain();
+          const filter = this.ctx.createBiquadFilter();
+          
+          filter.type = 'highpass';
+          filter.frequency.value = 5000;
+          
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.sfxGain);
+          
+          gain.gain.setValueAtTime(0.05, time);
+          gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+          src.start(time);
+          src.stop(time + 0.05);
+      }
+  }
+
+  playLeadNote(freq: number, time: number, duration: number, style: 'pluck' | 'cowbell') {
     if (!this.ctx || !this.musicGain) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     
-    osc.type = 'triangle'; // Softer, more "fun" sound than sawtooth
-    osc.frequency.value = freq;
+    // Using softer waveforms to avoid ear fatigue
+    if (style === 'cowbell') {
+        osc.type = 'triangle'; // Softer than square
+    } else {
+        osc.type = 'sine'; // Very soft
+    }
+    
+    osc.frequency.setValueAtTime(freq, time);
     
     gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(vol, time + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+    gain.gain.linearRampToValueAtTime(style === 'cowbell' ? 0.2 : 0.1, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
 
     osc.connect(gain);
     gain.connect(this.musicGain);
-    
     osc.start(time);
     osc.stop(time + duration + 0.1);
+  }
+
+  playBassNote(freq: number, time: number, duration: number) {
+      if (!this.ctx || !this.bassGain) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, time);
+
+      // Lowpass filter for deep bass
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(400, time); 
+      filter.frequency.linearRampToValueAtTime(100, time + duration); // Filter sweep
+
+      gain.gain.setValueAtTime(0.5, time);
+      gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.bassGain);
+      osc.start(time);
+      osc.stop(time + duration + 0.1);
   }
 
   scheduler = () => {
     if (!this.ctx || !this.isPlaying) return;
     
-    // Lookahead
-    while (this.nextNoteTime < this.ctx.currentTime + 0.1) {
+    const lookahead = 0.1;
+    
+    while (this.nextNoteTime < this.ctx.currentTime + lookahead) {
         if (this.currentTrack === 'menu') {
-            // Chill Menu Arpeggio (C Major 7)
-            const sequence = [261.63, 329.63, 392.00, 493.88]; // C4, E4, G4, B4
-            const note = sequence[this.noteIndex % sequence.length];
-            // Occasionally play a higher octave note
-            const finalNote = Math.random() > 0.8 ? note * 2 : note;
-            
-            this.scheduleNote(finalNote, this.nextNoteTime, 0.3, 0.05);
-            this.nextNoteTime += 0.4; // Slower tempo
-            this.noteIndex++;
+            // "Playing with my heart" Vibe: Low, Plucky, Deep House
+            // 115 BPM
+            const tempo = 0.13; // 16th notes
+            const s = this.step % 32;
+
+            // Simple House Beat
+            if (s % 4 === 0) this.playDrum('kick', this.nextNoteTime);
+            if (s % 4 === 2) this.playDrum('hat', this.nextNoteTime);
+
+            // Deep Bass Arp (F#m -> D -> A -> E) - Low Octaves
+            let bassNote = '';
+            if (s < 8) bassNote = (s % 6 === 0) ? 'F#2' : (s % 3 === 0 ? 'F#2' : ''); 
+            else if (s < 16) bassNote = (s % 6 === 0) ? 'D2' : (s % 3 === 0 ? 'D2' : '');
+            else if (s < 24) bassNote = (s % 6 === 0) ? 'A2' : (s % 3 === 0 ? 'A2' : '');
+            else bassNote = (s % 6 === 0) ? 'E2' : (s % 3 === 0 ? 'E2' : '');
+
+            if (bassNote && NOTES[bassNote]) this.playBassNote(NOTES[bassNote], this.nextNoteTime, tempo * 3);
+
+            // Sparse Lead Plucks (Octave 3-4)
+            if (s === 0) this.playLeadNote(NOTES['C#4'], this.nextNoteTime, tempo * 4, 'pluck');
+            if (s === 14) this.playLeadNote(NOTES['A3'], this.nextNoteTime, tempo * 4, 'pluck');
+
+            this.nextNoteTime += tempo;
+            this.step++;
+
         } else if (this.currentTrack === 'game') {
-            // Upbeat Game Loop (F Major / D Minor feel)
-            // F4, A4, C5, D5, C5, A4
-            const sequence = [349.23, 440.00, 523.25, 587.33, 523.25, 440.00]; 
-            const note = sequence[this.noteIndex % sequence.length];
+            // "Shot It" Vibe: Phonk/Trap, Aggressive Bass
+            // 140 BPM
+            const tempo = 0.107; 
+            const s = this.step % 32;
+
+            // Trap Beat
+            if (s % 8 === 0) this.playDrum('kick', this.nextNoteTime);
+            if (s % 8 === 4) this.playDrum('snare', this.nextNoteTime);
+            if (s % 2 === 0) this.playDrum('hat', this.nextNoteTime);
+            // Fast hats on end of bar
+            if (s > 28) this.playDrum('hat', this.nextNoteTime);
+
+            // Driving Bass Arp (F# Phrygian) - Constant 8th notes, punchy
+            const bassSeq = ['F#1', 'F#1', 'F#2', 'F#1', 'A1', 'F#1', 'C#2', 'F#1'];
+            if (s % 2 === 0) {
+                 const note = bassSeq[(s/2) % 8];
+                 this.playBassNote(NOTES[note], this.nextNoteTime, tempo * 1.5);
+            }
+
+            // Low "Cowbell" Melody (Octave 3-4, not 5-6)
+            let note: string | null = null;
+            if (s === 0) note = 'F#3'; if (s === 6) note = 'A3'; 
+            if (s === 12) note = 'F#3'; if (s === 14) note = 'E3';
             
-            // Add some rhythm variety
-            const isOffBeat = this.noteIndex % 2 === 1;
-            this.scheduleNote(note, this.nextNoteTime, isOffBeat ? 0.1 : 0.2, 0.08);
-            
-            this.nextNoteTime += 0.15; // Fast tempo
-            this.noteIndex++;
+            if (note && NOTES[note]) {
+                this.playLeadNote(NOTES[note], this.nextNoteTime, tempo * 2, 'cowbell');
+            }
+
+            this.nextNoteTime += tempo;
+            this.step++;
         }
     }
     this.timerID = window.setTimeout(this.scheduler, 25);
@@ -171,7 +298,7 @@ class AudioEngine {
       
       this.isPlaying = true;
       this.currentTrack = track;
-      this.noteIndex = 0;
+      this.step = 0;
       this.nextNoteTime = this.ctx.currentTime + 0.1;
       
       if (this.timerID) clearTimeout(this.timerID);
@@ -193,37 +320,34 @@ class AudioEngine {
       gain.connect(this.sfxGain!);
 
       if (type === 'jump') {
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(200, t);
-          osc.frequency.exponentialRampToValueAtTime(400, t + 0.1);
-          gain.gain.setValueAtTime(0.3, t);
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(150, t);
+          osc.frequency.exponentialRampToValueAtTime(300, t + 0.1);
+          gain.gain.setValueAtTime(0.2, t);
           gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
           osc.start(t);
           osc.stop(t + 0.1);
       } else if (type === 'coin') {
-          // Cheerful high ping
           osc.type = 'sine';
           osc.frequency.setValueAtTime(1200, t);
-          osc.frequency.setValueAtTime(1600, t + 0.05); // Quick jump
-          gain.gain.setValueAtTime(0.2, t);
+          osc.frequency.setValueAtTime(1800, t + 0.05);
+          gain.gain.setValueAtTime(0.3, t);
           gain.gain.linearRampToValueAtTime(0.01, t + 0.2);
           osc.start(t);
           osc.stop(t + 0.2);
       } else if (type === 'crash') {
           osc.type = 'sawtooth';
           osc.frequency.setValueAtTime(100, t);
-          osc.frequency.exponentialRampToValueAtTime(10, t + 0.4);
+          osc.frequency.exponentialRampToValueAtTime(10, t + 0.3);
           gain.gain.setValueAtTime(0.5, t);
-          gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
           osc.start(t);
-          osc.stop(t + 0.4);
+          osc.stop(t + 0.3);
       } else if (type === 'powerup') {
-          // Major arpeggio sweep
           this.playTone(523.25, t, 0.1); // C5
           this.playTone(659.25, t + 0.1, 0.1); // E5
-          this.playTone(783.99, t + 0.2, 0.2); // G5
+          this.playTone(783.99, t + 0.2, 0.3); // G5
       } else if (type === 'score') {
-          // Pleasant ding
           this.playTone(880, t, 0.1);
           this.playTone(1760, t + 0.05, 0.1);
       }
@@ -252,6 +376,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>(0);
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
+  const [lives, setLives] = useState(3);
   
   const [finalScore, setFinalScore] = useState(0);
   const [collectedCoins, setCollectedCoins] = useState(0);
@@ -267,11 +392,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     y: 0, offsetY: 0, frame: 0, message: null as string | null, messageTimer: 0, isSynced: false, accumulatedScore: 0
   });
 
+  const livesRef = useRef(3);
   const obstaclesRef = useRef<Obstacle[]>([]);
   const pickupsRef = useRef<Pickup[]>([]);
   const particlesRef = useRef<Particle[]>([]);
   const floatingTextsRef = useRef<FloatingText[]>([]);
   const powerupRef = useRef<{ type: PickupType | null; timer: number }>({ type: null, timer: 0 });
+  const invincibilityRef = useRef(0);
+  const hudShakeRef = useRef(0);
   const coinsRef = useRef(0); // Session coins
 
   const bgEntitiesRef = useRef<BackgroundEntity[]>([]);
@@ -303,13 +431,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       const audio = audioRef.current;
       if (!audio) return;
 
-      if (gameState === GameState.MENU || gameState === GameState.STORE || gameState === GameState.SETTINGS) {
+      if (gameState === GameState.MENU || gameState === GameState.STORE || gameState === GameState.SETTINGS || gameState === GameState.PAUSED || gameState === GameState.GAME_OVER) {
+          if (gameState !== GameState.MENU) audio.resume();
           audio.playTrack('menu');
       } else if (gameState === GameState.PLAYING) {
           audio.resume();
           audio.playTrack('game');
-      } else if (gameState === GameState.GAME_OVER) {
-          audio.stopMusic();
       }
   }, [gameState]);
 
@@ -433,6 +560,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     bgEntitiesRef.current = [];
     floatingTextsRef.current = [];
     powerupRef.current = { type: null, timer: 0 };
+    invincibilityRef.current = 0;
+    hudShakeRef.current = 0;
     
     for(let i=0; i<10; i++) spawnBgEntity(0, Math.random() * 1000);
     for(let i=0; i<15; i++) spawnBgEntity(1, Math.random() * 1000);
@@ -443,6 +572,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     coinsRef.current = 0;
     levelRef.current = 0;
     framesRef.current = 0;
+    livesRef.current = 3;
+    setLives(3);
     setFinalScore(0);
     setCollectedCoins(0);
     setGameState(GameState.PLAYING);
@@ -471,10 +602,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       if (e.code === 'Escape') {
           if (gameState === GameState.PLAYING) {
               setGameState(GameState.PAUSED);
-              audioRef.current?.suspend();
+              // Audio context continues to run to play menu music
           } else if (gameState === GameState.PAUSED) {
               setGameState(GameState.PLAYING);
-              audioRef.current?.resume();
           } else if (gameState === GameState.STORE || gameState === GameState.SETTINGS) {
               setGameState(GameState.MENU);
           }
@@ -547,7 +677,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
       if (gameState === GameState.PLAYING) {
         updateGame(canvas.width, canvas.height);
-      } else if (gameState === GameState.MENU || gameState === GameState.STORE || gameState === GameState.SETTINGS) {
+      } else if (gameState === GameState.MENU || gameState === GameState.STORE || gameState === GameState.SETTINGS || gameState === GameState.PAUSED) {
+         // Background animation continues for pause screen
          framesRef.current++;
          gameSpeedRef.current = 2; 
          updateBackground(2); 
@@ -568,7 +699,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const updateGame = (width: number, height: number) => {
     const p = playerRef.current;
-    const drone = droneRef.current;
+    
+    if (invincibilityRef.current > 0) invincibilityRef.current--;
+    if (hudShakeRef.current > 0) hudShakeRef.current--;
 
     if (powerupRef.current.type) {
         powerupRef.current.timer--;
@@ -591,6 +724,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     } else {
         if (gameSpeedRef.current < MAX_SPEED) gameSpeedRef.current += SPEED_INCREMENT;
         p.dy += p.gravity;
+        
+        // Terminal Velocity Clamp
+        if (p.dy > 15) p.dy = 15;
+        if (p.dy < -15) p.dy = -15;
+
         p.y += p.dy;
         if (p.y + p.height >= height) { p.y = height - p.height; p.dy = 0; p.isGrounded = true; } 
         else if (p.y <= 0) { p.y = 0; p.dy = 0; p.isGrounded = true; } 
@@ -600,23 +738,56 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     updateBackground(gameSpeedRef.current);
     distanceScoreRef.current += gameSpeedRef.current * 0.05;
     
-    const distToWisp = Math.abs((p.y + p.height/2) - (drone.y));
+    // WISP AI & LOGIC
+    // Wisp anticipates obstacles. It looks ahead.
+    let targetY = height / 2;
+    let nearestObs = null;
+    let minDist = 9999;
+    
+    // Find nearest threatening obstacle in front
+    obstaclesRef.current.forEach(obs => {
+        if (obs.passed) return;
+        const dist = obs.x - p.x;
+        if (dist > 0 && dist < 600 && dist < minDist) {
+            minDist = dist;
+            nearestObs = obs;
+        }
+    });
+
+    if (nearestObs) {
+        const obs = nearestObs as Obstacle;
+        // Basic AI: If obstacle is bottom (y > 0), go Up. If top (y == 0), go Down.
+        if (obs.y > 0) { // Floor obstacle, go to top 25%
+            targetY = height * 0.25;
+        } else { // Ceiling obstacle, go to bottom 75%
+            targetY = height * 0.75;
+        }
+        // Smooth transition to dodge
+        droneRef.current.y += (targetY - droneRef.current.y) * 0.05;
+    } else {
+        // Idle Sine Wave Motion
+        const time = framesRef.current * 0.05;
+        targetY = (height / 2) + Math.sin(time) * (height * 0.3);
+        droneRef.current.y += (targetY - droneRef.current.y) * 0.03;
+    }
+
+    const distToWisp = Math.abs((p.y + p.height/2) - (droneRef.current.y));
     const isSynced = distToWisp < SYNC_DISTANCE_THRESHOLD;
     
     if (isSynced && powerupRef.current.type !== PickupType.BOOST) {
         let accumulationRate = 1;
         if (powerupRef.current.type === PickupType.MULTIPLIER) accumulationRate *= 2;
-        drone.accumulatedScore += accumulationRate;
+        droneRef.current.accumulatedScore += accumulationRate;
     } else {
-        if (drone.accumulatedScore > 0) {
-            const bonus = drone.accumulatedScore * 5; 
+        if (droneRef.current.accumulatedScore > 0) {
+            const bonus = droneRef.current.accumulatedScore * 5; 
             scoreRef.current += bonus;
             createFloatingText(p.x, p.y - 20, `+${bonus}`, '#ffff00');
             audioRef.current?.playSfx('score');
-            drone.accumulatedScore = 0;
+            droneRef.current.accumulatedScore = 0;
         }
     }
-    drone.isSynced = isSynced;
+    droneRef.current.isSynced = isSynced;
 
     if (distanceScoreRef.current >= 1) {
         let addedScore = Math.floor(distanceScoreRef.current);
@@ -638,8 +809,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     droneRef.current.frame += 0.05;
-    droneRef.current.offsetY = Math.sin(droneRef.current.frame) * 10;
-    droneRef.current.y += (p.y + (p.height / 2) - droneRef.current.y) * 0.08;
+    droneRef.current.offsetY = Math.sin(droneRef.current.frame) * 5;
 
     if (framesRef.current % 2 === 0) p.trail.push({ x: p.x, y: p.y, alpha: 0.8 });
     for (let i = p.trail.length - 1; i >= 0; i--) {
@@ -691,11 +861,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         audioRef.current?.playSfx('score');
       }
       if (obs.x + obs.width < -100) obstaclesToRemove.push(index);
-      if (powerupRef.current.type !== PickupType.BOOST) {
+      
+      if (powerupRef.current.type !== PickupType.BOOST && invincibilityRef.current === 0) {
           const pad = 8; 
           const playerHitbox = { x: p.x + pad, y: p.y + pad, w: p.width - pad*2, h: p.height - pad*2 };
           if (playerHitbox.x < obs.x + obs.width && playerHitbox.x + playerHitbox.w > obs.x && playerHitbox.y < obs.y + obs.height && playerHitbox.y + playerHitbox.h > obs.y) {
-            gameOver();
+            handlePlayerHit();
           }
       }
     });
@@ -711,6 +882,22 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         ft.y += ft.vy; ft.life--;
         if(ft.life <= 0) floatingTextsRef.current.splice(i, 1);
     }
+  };
+
+  const handlePlayerHit = () => {
+      if (invincibilityRef.current > 0) return;
+      
+      livesRef.current -= 1;
+      setLives(livesRef.current);
+
+      if (livesRef.current <= 0) {
+          gameOver();
+      } else {
+          invincibilityRef.current = 120; // 2 seconds at 60fps
+          hudShakeRef.current = 20; // Shake frames
+          createExplosion(playerRef.current.x + 16, playerRef.current.y + 16, '#ff0000', 30);
+          audioRef.current?.playSfx('crash');
+      }
   };
 
   const gameOver = () => {
@@ -816,11 +1003,24 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     if (gameState !== GameState.MENU && gameState !== GameState.STORE && gameState !== GameState.SETTINGS) {
         ctx.font = "48px 'VT323', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
         ctx.fillText(Math.floor(scoreRef.current).toString(), width / 2, 60);
+        
+        // Draw Hearts (Centered below score)
+        ctx.font = "32px 'VT323', monospace";
+        const shakeX = hudShakeRef.current > 0 ? (Math.random() - 0.5) * 10 : 0;
+        const shakeY = hudShakeRef.current > 0 ? (Math.random() - 0.5) * 10 : 0;
+        
+        for (let i = 0; i < 3; i++) {
+            // Heart logic: If i is less than current lives, it's active (Red), otherwise greyed out (#555)
+            ctx.fillStyle = i < livesRef.current ? '#ff003c' : '#555555';
+            ctx.fillText("♥", (width / 2) + (i - 1) * 35 + shakeX, 95 + shakeY);
+        }
+
         ctx.font = "24px 'VT323', monospace"; ctx.textAlign = "left";
         ctx.fillStyle = '#ffd700'; ctx.fillText(`COINS: ${coinsRef.current}`, 20, 40);
+
         if (powerupRef.current.type) {
              const secondsLeft = Math.ceil(powerupRef.current.timer / 60);
-             ctx.fillStyle = '#fff'; ctx.fillText(`${powerupRef.current.type} >> ${secondsLeft}s`, 20, 70);
+             ctx.fillStyle = '#fff'; ctx.fillText(`${powerupRef.current.type} >> ${secondsLeft}s`, 20, 80);
         }
         ctx.textAlign = "right"; ctx.fillStyle = "#fff"; ctx.fillText(`HI: ${highScore}`, width - 20, 40);
         
@@ -867,10 +1067,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.globalAlpha = 1.0;
 
     if (gameState !== GameState.GAME_OVER) {
-        ctx.shadowBlur = 20; ctx.shadowColor = p.color; // Glow matches skin
-        drawGlitchRect(ctx, p.x, p.y, p.width, p.height, p.color);
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#000'; const eyeOffset = p.dy > 0 ? 18 : 6; ctx.fillRect(p.x + 16, p.y + eyeOffset, 12, 4);
+        // Invincibility Blink
+        if (invincibilityRef.current > 0 && Math.floor(framesRef.current / 4) % 2 === 0) {
+            // Blink, don't draw
+        } else {
+            ctx.shadowBlur = 20; ctx.shadowColor = p.color; // Glow matches skin
+            drawGlitchRect(ctx, p.x, p.y, p.width, p.height, p.color);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#000'; const eyeOffset = p.dy > 0 ? 18 : 6; ctx.fillRect(p.x + 16, p.y + eyeOffset, 12, 4);
+        }
     }
 
     pickupsRef.current.forEach(pk => drawPickup(ctx, pk));
